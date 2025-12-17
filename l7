@@ -1,0 +1,137 @@
+// index.js (Educational/Defensive Example)
+const http = require('http');
+const https = require('https');
+const url = require('url');
+
+const USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15',
+    'Mozilla/5.0 (Linux; Android 10; SM-G981B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.162 Mobile Safari/537.36',
+];
+
+function getRandomUserAgent() {
+    return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+}
+
+async function makeRequest(targetUrl, method, index) {
+    const parsedUrl = url.parse(targetUrl);
+    const protocol = parsedUrl.protocol === 'https:' ? https : http;
+    const startTime = process.hrtime.bigint();
+    
+    // Cache Buster ditambahkan di sini
+    const pathWithCacheBuster = `${parsedUrl.pathname || '/'}${parsedUrl.search ? parsedUrl.search + '&' : '?'}nocache=${Date.now()}${Math.floor(Math.random() * 900) + 100}`;
+
+    const options = {
+        hostname: parsedUrl.hostname,
+        port: parsedUrl.port || (protocol === https ? 443 : 80),
+        path: pathWithCacheBuster,
+        method: method,
+        timeout: 10000, 
+        headers: {
+            'User-Agent': getRandomUserAgent(),
+            'Cache-Control': 'no-cache', 
+            'Pragma': 'no-cache'
+        }
+    };
+
+    return new Promise((resolve) => {
+        const req = protocol.request(options, (res) => {
+            const endTime = process.hrtime.bigint();
+            const latencyMs = Number(endTime - startTime) / 1000000;
+
+            let responseData = '';
+            res.on('data', (chunk) => {
+                if (method !== 'HEAD') {
+                    responseData += chunk;
+                }
+            });
+
+            res.on('end', () => {
+                resolve({
+                    index: index,
+                    code: res.statusCode,
+                    latency: latencyMs.toFixed(2),
+                    error: null
+                });
+            });
+        });
+
+        req.on('error', (e) => {
+            const endTime = process.hrtime.bigint();
+            const latencyMs = Number(endTime - startTime) / 1000000;
+            resolve({
+                index: index,
+                code: 0,
+                latency: latencyMs.toFixed(2),
+                error: e.message
+            });
+        });
+
+        if (method === 'POST') {
+            req.write('sample_post_data=1'); // Data POST minimal untuk tes
+        }
+        
+        req.end();
+    });
+}
+
+async function runConcurrentTest(method, count, url) {
+    if (!['GET', 'HEAD', 'POST'].includes(method)) {
+        console.log(`Metode ${method} tidak didukung dalam mode ini.`);
+        return;
+    }
+    
+    console.log(`\n--- Uji Konkuren Dimulai ---`);
+    console.log(`Target: ${url}`);
+    console.log(`Metode: ${method}`);
+    console.log(`Jumlah Request: ${count}`);
+
+    const promises = [];
+    for (let i = 0; i < count; i++) {
+        promises.push(makeRequest(url, method, i + 1));
+    }
+
+    const results = await Promise.all(promises);
+
+    results.forEach(result => {
+        if (result.error) {
+            console.log(`[#${result.index}] GAGAL: ${result.error} | ${result.latency}ms`);
+        } else {
+            console.log(`[#${result.index}] CODE: ${result.code} | ${result.latency}ms`);
+        }
+    });
+    console.log(`--- Uji Selesai ---`);
+}
+
+function main() {
+    const args = process.argv.slice(2);
+    if (args.length < 3 || args[0] === 'l7') {
+        // Mode edukasi
+        console.log(`\n======================================================`);
+        console.log(` MODE EDUKASI: NODE.JS CONCURRENT REQUESTS (SAFE)`);
+        console.log(`======================================================`);
+        console.log(`Penggunaan: node index.js <method> <count> <url>`);
+        console.log(`Contoh: node index.js GET 10 https://www.example.com`);
+        console.log(`Metode yang didukung: GET, HEAD, POST`);
+        return;
+    }
+
+    const method = args[0].toUpperCase();
+    const count = parseInt(args[1]);
+    const url = args[2];
+    
+    if (isNaN(count) || count <= 0) {
+        console.log('Jumlah request harus berupa angka positif.');
+        return;
+    }
+    
+    if (!url.startsWith('http')) {
+        console.log('URL harus diawali dengan http:// atau https://');
+        return;
+    }
+
+    runConcurrentTest(method, count, url);
+}
+
+main();
+
