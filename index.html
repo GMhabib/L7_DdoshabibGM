@@ -1,61 +1,38 @@
 <!DOCTYPE html>
-<html lang="id">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>Real-Time DStat Monitor</title>
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <title>Habib Flooder Dashboard</title>
     <style>
-        body { background: #0a0a0a; color: #00ff41; font-family: 'Courier New', monospace; padding: 20px; font-size: 14px; }
-        .container { max-width: 900px; margin: auto; }
-        h1 { color: #fff; border-bottom: 2px solid #333; padding-bottom: 10px; }
-        .stats-header { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; background: #222; padding: 10px; font-weight: bold; color: #ffcc00; text-align: center; }
-        #stat-log { background: #111; height: 500px; overflow-y: auto; border: 1px solid #333; padding: 10px; display: flex; flex-direction: column; }
-        .row { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; padding: 5px 0; border-bottom: 1px solid #222; text-align: center; }
-        .high-load { color: #ff4444; font-weight: bold; }
-        .med-load { color: #ffbb33; }
+        body { background: #0a0a0a; color: #00ff41; font-family: 'Courier New', monospace; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .panel { border: 2px solid #00ff41; padding: 40px; box-shadow: 0 0 20px #00ff41; border-radius: 15px; background: rgba(0, 255, 65, 0.05); width: 400px; text-align: left; }
+        .lcd { font-size: 30px; margin-bottom: 20px; text-shadow: 0 0 10px #00ff41; }
+        .label { color: #888; font-size: 14px; text-transform: uppercase; }
+        .val { margin-bottom: 15px; font-weight: bold; }
+        .blink { animation: blinker 1s linear infinite; color: red; }
+        @keyframes blinker { 50% { opacity: 0; } }
     </style>
 </head>
 <body>
-
-<div class="container">
-    <h1>System Live Monitor (Real Data)</h1>
-    <div class="stats-header">
-        <div>CPU (%)</div><div>RAM (%)</div><div>NET-RX (MB/s)</div><div>NET-TX (MB/s)</div>
+    <div class="panel">
+        <div class="lcd">[ FLOODER LOG V12 ]</div>
+        <div class="label">Target</div>
+        <div class="val" id="target">-</div>
+        <div class="label">Total Packets Sent</div>
+        <div class="val" id="total">0</div>
+        <div class="label">Status</div>
+        <div class="val" id="status">OFFLINE</div>
     </div>
-    <div id="stat-log"></div>
-</div>
 
-<script>
-    const logContainer = document.getElementById('stat-log');
-
-    async function fetchStats() {
-        try {
-            // Memanggil endpoint API Vercel
-            const response = await fetch('/api/stats');
-            const data = await response.json();
-
-            const row = document.createElement('div');
-            row.className = 'row';
-            row.innerHTML = `
-                <div>${formatValue(data.cpu, 80)}%</div>
-                <div>${formatValue(data.ram, 90)}%</div>
-                <div>${data.netRecv} MB/s</div>
-                <div>${data.netSend} MB/s</div>
-            `;
-
-            logContainer.prepend(row);
-
-            if (logContainer.childNodes.length > 50) {
-                logContainer.removeChild(logContainer.lastChild);
-            }
-        } catch (error) {
-            console.error("Gagal fetch data:", error);
-        }
-    }
-
-    // Gantikan WebSocket dengan interval polling
-    setInterval(fetchStats, 1000);
-</script>
+    <script>
+        setInterval(() => {
+            fetch('/api/stats').then(r => r.json()).then(data => {
+                document.getElementById('target').innerText = data.target;
+                document.getElementById('total').innerText = data.total.toLocaleString();
+                document.getElementById('status').innerText = data.status;
+                document.getElementById('status').className = data.status === "ATTACKING" ? "val blink" : "val";
+            });
+        }, 1000);
+    </script>
 </body>
 </html>
 

