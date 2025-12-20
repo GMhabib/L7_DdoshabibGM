@@ -26,34 +26,35 @@
 </div>
 
 <script>
-    const socket = io(); // Menghubungkan ke server.js
     const logContainer = document.getElementById('stat-log');
 
-    function formatValue(val, limit) {
-        let className = "";
-        if (val > limit) className = "high-load";
-        else if (val > limit * 0.7) className = "med-load";
-        return `<span class="${className}">${val}</span>`;
+    async function fetchStats() {
+        try {
+            // Memanggil endpoint API Vercel
+            const response = await fetch('/api/stats');
+            const data = await response.json();
+
+            const row = document.createElement('div');
+            row.className = 'row';
+            row.innerHTML = `
+                <div>${formatValue(data.cpu, 80)}%</div>
+                <div>${formatValue(data.ram, 90)}%</div>
+                <div>${data.netRecv} MB/s</div>
+                <div>${data.netSend} MB/s</div>
+            `;
+
+            logContainer.prepend(row);
+
+            if (logContainer.childNodes.length > 50) {
+                logContainer.removeChild(logContainer.lastChild);
+            }
+        } catch (error) {
+            console.error("Gagal fetch data:", error);
+        }
     }
 
-    socket.on('stats_update', (data) => {
-        const row = document.createElement('div');
-        row.className = 'row';
-        row.innerHTML = `
-            <div>${formatValue(data.cpu, 80)}%</div>
-            <div>${formatValue(data.ram, 90)}%</div>
-            <div>${data.netRecv} MB/s</div>
-            <div>${data.netSend} MB/s</div>
-        `;
-
-        // Masukkan data terbaru di posisi paling atas (seperti dstat)
-        logContainer.prepend(row);
-
-        // Batasi log agar browser tidak lag (50 baris terakhir)
-        if (logContainer.childNodes.length > 50) {
-            logContainer.removeChild(logContainer.lastChild);
-        }
-    });
+    // Gantikan WebSocket dengan interval polling
+    setInterval(fetchStats, 1000);
 </script>
 </body>
 </html>
