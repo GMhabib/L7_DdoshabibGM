@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Real-Time DStat Monitor</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body { background: #0a0a0a; color: #00ff41; font-family: 'Courier New', monospace; padding: 20px; font-size: 14px; }
+        .container { max-width: 900px; margin: auto; }
+        h1 { color: #fff; border-bottom: 2px solid #333; padding-bottom: 10px; }
+        .stats-header { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; background: #222; padding: 10px; font-weight: bold; color: #ffcc00; text-align: center; }
+        #stat-log { background: #111; height: 500px; overflow-y: auto; border: 1px solid #333; padding: 10px; display: flex; flex-direction: column; }
+        .row { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; padding: 5px 0; border-bottom: 1px solid #222; text-align: center; }
+        .high-load { color: #ff4444; font-weight: bold; }
+        .med-load { color: #ffbb33; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>System Live Monitor (Real Data)</h1>
+    <div class="stats-header">
+        <div>CPU (%)</div><div>RAM (%)</div><div>NET-RX (MB/s)</div><div>NET-TX (MB/s)</div>
+    </div>
+    <div id="stat-log"></div>
+</div>
+
+<script>
+    const socket = io(); // Menghubungkan ke server.js
+    const logContainer = document.getElementById('stat-log');
+
+    function formatValue(val, limit) {
+        let className = "";
+        if (val > limit) className = "high-load";
+        else if (val > limit * 0.7) className = "med-load";
+        return `<span class="${className}">${val}</span>`;
+    }
+
+    socket.on('stats_update', (data) => {
+        const row = document.createElement('div');
+        row.className = 'row';
+        row.innerHTML = `
+            <div>${formatValue(data.cpu, 80)}%</div>
+            <div>${formatValue(data.ram, 90)}%</div>
+            <div>${data.netRecv} MB/s</div>
+            <div>${data.netSend} MB/s</div>
+        `;
+
+        // Masukkan data terbaru di posisi paling atas (seperti dstat)
+        logContainer.prepend(row);
+
+        // Batasi log agar browser tidak lag (50 baris terakhir)
+        if (logContainer.childNodes.length > 50) {
+            logContainer.removeChild(logContainer.lastChild);
+        }
+    });
+</script>
+</body>
+</html>
+
